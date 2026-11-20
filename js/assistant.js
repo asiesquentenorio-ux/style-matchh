@@ -5,15 +5,24 @@
 const CONFIG = { pin: "1234" }; // PIN del panel del equipo (cámbialo)
 const F = "w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white";
 const BTN = "w-full bg-indigo-600 hover:bg-indigo-700 text-on font-bold py-3 rounded-xl transition";
-const wa = t => { const l = DB.get("nums"), n = (l.find(x => x.main) || l[0] || {}).num || ""; window.open(`https://wa.me/${n}?text=${encodeURIComponent(t)}`, "_blank", "noopener"); };
+const wa = t => { const l = CAT("nums"), n = (l.find(x => x.main) || l[0] || {}).num || ""; window.open(`https://wa.me/${n}?text=${encodeURIComponent(t)}`, "_blank", "noopener"); };
 const esc = s => s.replace(/[&<>"']/g, c => "&#" + c.charCodeAt(0) + ";");
 const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
 };
 
-const DB = { get: k => store.get("sm_" + k, k === "nums" ? [{ id: 1, label: "Principal", num: "51939130324", main: true }] : k === "over" ? {} : []), set: (k, v) => store.set("sm_" + k, v) };
-let cam, adminOK = false;
+const DB = { get: k => store.get("sm_" + k, k === "nums" ? [{ id: 1, label: "Principal", num: "51939130324", main: true }] : k === "over" || k === "photos" ? {} : []), set: (k, v) => store.set("sm_" + k, v) };
+let cam, adminOK = false, SHARED = null, sellPhoto = null, pendingPhoto = null;
+// Catálogo compartido: catalog.json (junto a index.html) lo ven todos los visitantes
+async function loadShared() { try { const r = await fetch("catalog.json", { cache: "no-store" }); if (r.ok) SHARED = await r.json(); } catch {} }
+function CAT(k) { try { if (localStorage.getItem("sm_" + k) !== null) return DB.get(k); } catch {} return SHARED && SHARED[k] !== undefined ? SHARED[k] : DB.get(k); }
+function seed() { ["nums", "extra", "del", "over", "photos"].forEach(k => { try { if (localStorage.getItem("sm_" + k) === null && SHARED && SHARED[k] !== undefined) DB.set(k, SHARED[k]); } catch {} }); }
+function shrink(file) { return new Promise(res => { const im = new Image(); im.onload = () => { const k = Math.min(1, 640 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = im.width * k; c.height = im.height * k; c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL("image/jpeg", 0.72)); }; im.onerror = () => res(null); im.src = URL.createObjectURL(file); }); }
+function paintPhotos() {
+  const ph = CAT("photos");
+  document.querySelectorAll("#product-grid article").forEach(a => { const m = /addToCart\((\d+)\)/.exec(a.innerHTML), src = m && ph[m[1]]; if (src) a.firstElementChild.innerHTML = `<img src="${src}" alt="" class="w-full h-full object-cover">`; });
+}
 const stopCam = () => { if (cam) cam.getTracks().forEach(t => t.stop()); cam = null; };
 function closeSheet(id) { stopCam(); const m = document.getElementById(id); if (m) m.remove(); }
 function sheet(id, title, body, w = "max-w-md") {
@@ -32,6 +41,7 @@ function refreshCats() {
 
 // ---- Vender mi prenda ----
 function openSell() {
+  sellPhoto = null;
   const cats = [...new Set(PRODUCTS.map(x => x.c))];
   sheet("sell-modal", "Vender mi prenda", `<div class="space-y-3">
     <input id="sl-photo" type="file" accept="image/*" class="${F}">
@@ -41,13 +51,13 @@ function openSell() {
     <input id="sl-desc" placeholder="Talla, estado, marca..." class="${F}">
     <input id="sl-who" placeholder="Tu nombre" autocomplete="name" class="${F}">
     <button id="sl-send" class="w-full bg-emerald-600 hover:bg-emerald-700 text-snow font-bold py-3 rounded-xl transition">Enviar por WhatsApp</button></div>`);
-  $("sl-photo").onchange = e => { const f = e.target.files[0]; if (!f) return; const p = $("sl-prev"); p.src = URL.createObjectURL(f); p.classList.remove("hidden"); };
+  $("sl-photo").onchange = async e => { const f = e.target.files[0]; if (!f) return; sellPhoto = await shrink(f); const p = $("sl-prev"); if (sellPhoto) { p.src = sellPhoto; p.classList.remove("hidden"); } };
   $("sl-send").onclick = () => {
     const n = $("sl-name").value.trim(), w = $("sl-who").value.trim();
     if (!n || !w) return note("Falta el nombre de la prenda y el tuyo");
     wa(`Hola Style Match, quiero vender una prenda:\n• ${n} (${$("sl-cat").value})\n• Precio: $${$("sl-price").value || "a consultar"}\n• ${$("sl-desc").value || "Sin detalles"}\n• Soy ${w}\nTe envío la foto por aquí.`);
-    DB.set("sells", [{ id: Date.now(), f: new Date().toISOString(), who: w, n, cat: $("sl-cat").value, price: $("sl-price").value, desc: $("sl-desc").value, st: "pendiente" }, ...DB.get("sells")]);
-    closeSheet("sell-modal"); note("Solicitud lista en WhatsApp");
+    DB.set("sells", [{ id: Date.now(), f: new Date().toISOString(), who: w, n, cat: $("sl-cat").value, price: $("sl-price").value, img: sellPhoto, desc: $("sl-desc").value, st: "pendiente" }, ...DB.get("sells")]);
+    closeSheet("sell-modal"); note("Listo: adjunta la foto en el chat de WhatsApp");
   };
 }
 
@@ -64,15 +74,18 @@ function sendToWhatsApp() {
 let BASE;
 function applyCatalog() {
   BASE = BASE || PRODUCTS.map(x => ({ ...x }));
-  const del = DB.get("del"), over = DB.get("over");
+  const del = CAT("del"), over = CAT("over");
   PRODUCTS.length = 0;
-  PRODUCTS.push(...BASE.filter(x => !del.includes(x.id)).concat(DB.get("extra")).map(x => ({ ...x, ...over[x.id] })));
+  PRODUCTS.push(...BASE.filter(x => !del.includes(x.id)).concat(CAT("extra")).map(x => ({ ...x, ...over[x.id] })));
   refreshCats(); applyFilters();
 }
-addEventListener("DOMContentLoaded", applyCatalog);
+addEventListener("DOMContentLoaded", async () => {
+  const af = applyFilters; applyFilters = () => { af(); paintPhotos(); };
+  await loadShared(); applyCatalog();
+});
 
 // ---- Panel del equipo (PIN en CONFIG.pin) ----
-const KEYS = ["nums", "extra", "del", "over", "orders", "sells"];
+const KEYS = ["nums", "extra", "del", "over", "photos", "orders", "sells"];
 const SKIN = [["calido", "Cálido"], ["frio", "Frío"], ["neutro", "Neutro"]];
 const BODY = [["reloj-arena", "Reloj de arena"], ["rectangular", "Rectangular"], ["triangulo", "Triángulo"], ["triangulo-invertido", "Triángulo invertido"]];
 const ORD = ["nuevo", "confirmado", "enviado", "entregado", "cancelado"], SELL = ["pendiente", "aprobada", "publicada", "rechazada"];
@@ -84,38 +97,41 @@ const upd = (k, id, patch) => DB.set(k, DB.get(k).map(x => x.id === id ? { ...x,
 let adminTab = "cat";
 
 const TABS = {
-  cat: () => `<div class="${CARD} space-y-2"><p class="font-bold text-slate-900">Nueva prenda</p>
+  cat: () => { const ph = DB.get("photos"); return `<div class="${CARD} space-y-2"><p class="font-bold text-slate-900">Nueva prenda</p>
     <div class="grid grid-cols-2 gap-2"><input id="ad-name" placeholder="Nombre" class="${F}"><input id="ad-cat" list="ad-cats" placeholder="Categoría" class="${F}"><input id="ad-price" type="number" min="1" placeholder="Precio $" class="${F}"><div class="grid grid-cols-2 gap-2"><select id="ad-skin" class="${F}">${opt(SKIN)}</select><select id="ad-body" class="${F}">${opt(BODY)}</select></div></div>
-    <datalist id="ad-cats">${[...new Set(PRODUCTS.map(x => x.c))].map(c => `<option value="${c}">`).join("")}</datalist>
+    <input id="ad-photo" type="file" accept="image/*" class="${F}"><datalist id="ad-cats">${[...new Set(PRODUCTS.map(x => x.c))].map(c => `<option value="${c}">`).join("")}</datalist>
     <button data-a="add" class="${BTN}">Agregar al catálogo</button></div>
     <p class="text-xs font-bold uppercase tracking-wider text-slate-700">En el catálogo (${PRODUCTS.length})</p>
-    ${PRODUCTS.map(x => `<div data-row="${x.id}" class="flex items-center gap-2"><input data-f="n" value="${x.n}" class="${F}"><input data-f="p" type="number" min="1" value="${x.p}" class="${F} !w-20"><button data-a="save" data-id="${x.id}" class="${MINI} bg-indigo-50 text-indigo-700">Guardar</button>${trash("del", x.id)}</div>`).join("")}
-    <button data-a="restore" class="${MINI} bg-slate-100 text-slate-700">Restaurar prendas originales</button>`,
+    ${PRODUCTS.map(x => `<div data-row="${x.id}" class="flex items-center gap-2"><input data-f="n" value="${x.n}" class="${F}"><input data-f="p" type="number" min="1" value="${x.p}" class="${F} !w-20">${ph[x.id] ? `<img src="${ph[x.id]}" class="w-9 h-9 rounded-lg object-cover" alt="">` : ""}<button data-a="save" data-id="${x.id}" class="${MINI} bg-indigo-50 text-indigo-700">Guardar</button><label class="${MINI} bg-slate-100 text-slate-700 cursor-pointer">Foto<input type="file" accept="image/*" data-photo="${x.id}" class="hidden"></label>${trash("del", x.id)}</div>`).join("")}
+    <button data-a="restore" class="${MINI} bg-slate-100 text-slate-700">Restaurar prendas originales</button> <button data-a="publish" class="${MINI} bg-indigo-600 text-on">Publicar para todos</button>`; },
   sells: () => { const l = DB.get("sells"); return `<p class="text-xs text-slate-500">Prendas que te ofrecen desde «Vender mi prenda». Apruébalas y publícalas en el catálogo.</p>` + (l.map(s => `<div data-srow="${s.id}" class="${CARD} space-y-2">
-    <div class="flex justify-between gap-2"><div><p class="font-bold text-slate-900">${esc(s.n)} <span class="font-normal text-slate-500">· ${esc(s.cat)} · ${s.price ? "$" + esc(String(s.price)) : "sin precio"}</span></p><p class="text-slate-600">${esc(s.desc || "Sin detalles")}</p><p class="text-xs text-slate-500">${esc(s.who)} · ${day(s.f)}</p></div>${trash("delsell", s.id)}</div>
+    <div class="flex justify-between gap-2">${s.img ? `<img src="${s.img}" class="w-16 h-16 rounded-lg object-cover" alt="">` : ""}<div><p class="font-bold text-slate-900">${esc(s.n)} <span class="font-normal text-slate-500">· ${esc(s.cat)} · ${s.price ? "$" + esc(String(s.price)) : "sin precio"}</span></p><p class="text-slate-600">${esc(s.desc || "Sin detalles")}</p><p class="text-xs text-slate-500">${esc(s.who)} · ${day(s.f)}</p></div>${trash("delsell", s.id)}</div>
     <div class="flex flex-wrap items-center gap-2"><select data-sst="${s.id}" class="${F} !w-auto !py-1">${opt(SELL, s.st)}</select>${s.st === "publicada" ? "" : `<select data-f="s" class="${F} !w-auto !py-1">${opt(SKIN)}</select><select data-f="b" class="${F} !w-auto !py-1">${opt(BODY)}</select><button data-a="pub" data-id="${s.id}" class="${MINI} bg-indigo-600 text-on">Publicar</button>`}</div></div>`).join("") || `<p class="text-sm text-slate-500">Aún no hay solicitudes de venta.</p>`); },
   orders: () => { const l = DB.get("orders"), ok = l.filter(o => o.st === "entregado"); return `<div class="grid grid-cols-3 gap-2 text-center">${[["Pedidos", l.length], ["Nuevos", l.filter(o => o.st === "nuevo").length], ["Cobrado", "$" + ok.reduce((t, o) => t + o.total, 0).toFixed(2)]].map(([a, b]) => `<div class="${CARD}"><p class="text-xs text-slate-500">${a}</p><p class="font-extrabold text-slate-900">${b}</p></div>`).join("")}</div>` + (l.map(o => `<div class="${CARD} space-y-2"><div class="flex justify-between gap-2"><div><p class="font-bold text-slate-900">${esc(o.who)} · $${o.total.toFixed(2)}</p><p class="text-slate-600">${o.items.map(i => i.n).join(", ")}</p><p class="text-xs text-slate-500">${day(o.f)} · ${esc(o.ship)}${o.nt ? " · " + esc(o.nt) : ""}</p></div>${trash("delord", o.id)}</div><select data-ost="${o.id}" class="${F} !w-auto !py-1">${opt(ORD, o.st)}</select></div>`).join("") || `<p class="text-sm text-slate-500">Aún no hay pedidos.</p>`); },
   wa: () => `<p class="text-xs text-slate-500">El número principal recibe los pedidos y las ventas.</p>` + DB.get("nums").map(n => `<div class="${CARD} flex items-center justify-between gap-2"><div><p class="font-bold text-slate-900">${n.label}${n.main ? ` <span class="${MINI} bg-indigo-50 text-indigo-700">Principal</span>` : ""}</p><p class="text-slate-600">+${n.num}</p></div><div class="flex items-center gap-1">${n.main ? "" : `<button data-a="main" data-id="${n.id}" class="${MINI} bg-slate-100 text-slate-700">Hacer principal</button>`}${trash("delnum", n.id)}</div></div>`).join("") + `<div class="${CARD} space-y-2"><p class="font-bold text-slate-900">Agregar número</p><div class="grid grid-cols-2 gap-2"><input id="wn-l" placeholder="Nombre (ej. Ventas)" class="${F}"><input id="wn-n" inputmode="tel" placeholder="939130324" class="${F}"></div><button data-a="addnum" class="${BTN}">Agregar número</button></div>`,
-  data: () => `<p class="text-sm text-slate-600">Tus pedidos, ventas, números y cambios al catálogo se guardan en este navegador. Descarga una copia para respaldarla o pasarla a otro dispositivo.</p><button data-a="export" class="${BTN}">Descargar copia (JSON)</button><input id="im-file" type="file" accept="application/json" class="${F}">`
+  data: () => `<p class="text-sm text-slate-600">Lo que cambies aquí (prendas, fotos, números) solo lo ves tú hasta que toques <b>Publicar para todos</b> en Catálogo: se descarga <b>catalog.json</b> y lo subes a GitHub junto a index.html. Pedidos y ventas se quedan en este navegador; esta copia sirve para respaldarlos.</p><button data-a="publish" class="${BTN}">Publicar para todos (catalog.json)</button><button data-a="export" class="${BTN}">Descargar copia de todo (JSON)</button><input id="im-file" type="file" accept="application/json" class="${F}">`
 };
 const A = {
   tab: id => { adminTab = id; },
   add: () => {
     const n = $("ad-name").value.trim(), c = $("ad-cat").value.trim(), p = parseFloat($("ad-price").value);
     if (!n || !c || !(p > 0)) return note("Completa nombre, categoría y precio");
-    DB.set("extra", [...DB.get("extra"), { id: Date.now(), n: esc(n), c: esc(c), p, s: $("ad-skin").value, b: $("ad-body").value }]); applyCatalog(); note("Prenda agregada");
+    const id = Date.now(); DB.set("extra", [...DB.get("extra"), { id, n: esc(n), c: esc(c), p, s: $("ad-skin").value, b: $("ad-body").value }]);
+    if (pendingPhoto) { DB.set("photos", { ...DB.get("photos"), [id]: pendingPhoto }); pendingPhoto = null; }
+    applyCatalog(); note("Prenda agregada");
   },
   save: id => {
     const r = document.querySelector(`[data-row="${id}"]`), n = r.querySelector('[data-f="n"]').value.trim(), p = parseFloat(r.querySelector('[data-f="p"]').value);
     if (!n || !(p > 0)) return note("Pon un nombre y un precio válidos");
     DB.set("over", { ...DB.get("over"), [id]: { n: esc(n), p } }); applyCatalog(); note("Guardado");
   },
-  del: id => { const ex = DB.get("extra"); if (ex.some(x => x.id === id)) DB.set("extra", ex.filter(x => x.id !== id)); else DB.set("del", [...DB.get("del"), id]); applyCatalog(); },
+  del: id => { const ex = DB.get("extra"); if (ex.some(x => x.id === id)) DB.set("extra", ex.filter(x => x.id !== id)); else DB.set("del", [...DB.get("del"), id]); const ph = DB.get("photos"); delete ph[id]; DB.set("photos", ph); applyCatalog(); },
   restore: () => { DB.set("del", []); DB.set("over", {}); applyCatalog(); note("Prendas originales restauradas"); },
   pub: id => {
     const s = DB.get("sells").find(x => x.id === id), r = document.querySelector(`[data-srow="${id}"]`), p = parseFloat(s.price);
     if (!(p > 0)) return note("Esa solicitud no tiene precio");
-    DB.set("extra", [...DB.get("extra"), { id: Date.now(), n: esc(s.n), c: esc(s.cat), p, s: r.querySelector('[data-f="s"]').value, b: r.querySelector('[data-f="b"]').value }]);
+    const nid = Date.now(); if (s.img) DB.set("photos", { ...DB.get("photos"), [nid]: s.img });
+    DB.set("extra", [...DB.get("extra"), { id: nid, n: esc(s.n), c: esc(s.cat), p, s: r.querySelector('[data-f="s"]').value, b: r.querySelector('[data-f="b"]').value }]);
     upd("sells", id, { st: "publicada" }); applyCatalog(); note("Publicada en el catálogo");
   },
   delsell: id => DB.set("sells", DB.get("sells").filter(x => x.id !== id)),
@@ -130,6 +146,10 @@ const A = {
     const a = DB.get("nums"); if (a.length < 2) return note("Deja al menos un número");
     const r = a.filter(x => x.id !== id); if (!r.some(x => x.main)) r[0].main = true; DB.set("nums", r);
   },
+  publish: () => {
+    const l = document.createElement("a"); l.href = URL.createObjectURL(new Blob([JSON.stringify(Object.fromEntries(["nums", "extra", "del", "over", "photos"].map(k => [k, DB.get(k)])))], { type: "application/json" }));
+    l.download = "catalog.json"; l.click(); note("Descargado. Súbelo a GitHub junto a index.html");
+  },
   export: () => {
     const l = document.createElement("a"); l.href = URL.createObjectURL(new Blob([JSON.stringify(Object.fromEntries(KEYS.map(k => [k, DB.get(k)])), null, 2)], { type: "application/json" }));
     l.download = "style-match-datos.json"; l.click();
@@ -143,7 +163,7 @@ function importData(f) {
 function openAdmin() {
   if (!adminOK) {
     sheet("admin-modal", "Acceso del equipo", `<input id="ad-pin" type="password" placeholder="PIN" class="${F}"><button id="ad-go" class="${BTN} mt-3">Entrar</button>`);
-    $("ad-go").onclick = () => { if ($("ad-pin").value === CONFIG.pin) { adminOK = true; openAdmin(); } else note("PIN incorrecto"); };
+    $("ad-go").onclick = () => { if ($("ad-pin").value === CONFIG.pin) { adminOK = true; seed(); openAdmin(); } else note("PIN incorrecto"); };
     return;
   }
   const tabs = [["cat", "Catálogo"], ["sells", "Ventas"], ["orders", "Pedidos"], ["wa", "WhatsApp"], ["data", "Datos"]];
@@ -155,6 +175,8 @@ function openAdmin() {
   };
   m.onchange = e => {
     const t = e.target;
+    if (t.id === "ad-photo") { shrink(t.files[0]).then(d => { pendingPhoto = d; note(d ? "Foto lista" : "No pude leer la foto"); }); return; }
+    if (t.dataset.photo) { shrink(t.files[0]).then(d => { if (!d) return note("No pude leer la foto"); if (!DB.set("photos", { ...DB.get("photos"), [t.dataset.photo]: d })) note("No cabe: usa menos fotos"); applyCatalog(); openAdmin(); }); return; }
     if (t.id === "im-file") return importData(t.files[0]);
     if (t.dataset.ost) upd("orders", +t.dataset.ost, { st: t.value }); else if (t.dataset.sst) upd("sells", +t.dataset.sst, { st: t.value }); else return;
     openAdmin();
