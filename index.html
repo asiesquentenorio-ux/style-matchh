@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Style Match - Tu Asesor de Imagen Personalizado</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    const _c = v => `hsl(var(--${v}) / <alpha-value>)`;
+    tailwind.config = { theme: { extend: {
+      colors: {
+        white: _c("surface"),
+        slate: { 50: _c("s50"), 100: _c("s100"), 200: _c("s200"), 300: _c("s300"), 400: _c("s400"), 500: _c("s500"), 600: _c("s600"), 700: _c("s700"), 800: _c("s800"), 900: _c("s900") },
+        indigo: { 50: _c("a50"), 100: _c("a100"), 500: _c("a500"), 600: _c("a600"), 700: _c("a700") },
+        purple: { 600: _c("p600") },
+        red: { 50: _c("r50"), 500: _c("r500"), 600: _c("r600") },
+        ink: _c("s900"), paper: _c("surface"), on: _c("on"),
+        snow: "#ffffff", night: "#0f172a"
+      },
+      borderColor: { DEFAULT: "hsl(var(--s200))" }
+    } } };
+
+    const PALETTES = {
+      indigo:   { n: "Índigo",    a: [243, 75, 59], b: [271, 81, 56], t: [215, 40] },
+      rosa:     { n: "Rosa",      a: [335, 72, 47], b: [352, 75, 48], t: [340, 55] },
+      esmeralda:{ n: "Esmeralda", a: [160, 84, 30], b: [185, 80, 32], t: [150, 38] },
+      terracota:{ n: "Terracota", a: [17, 88, 40],  b: [32, 92, 38],  t: [30, 55] },
+      oceano:   { n: "Océano",    a: [205, 90, 36], b: [225, 80, 48], t: [200, 55] },
+      grafito:  { n: "Grafito",   a: [220, 12, 28], b: [220, 10, 42], t: [220, 6] }
+    };
+    const Theme = {
+      KEY: "sm_theme", state: { mode: "auto", palette: "indigo" },
+      isDark() { return this.state.mode === "dark" || (this.state.mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches); },
+      load() { try { Object.assign(this.state, JSON.parse(localStorage.getItem(this.KEY)) || {}); } catch {} },
+      save() { try { localStorage.setItem(this.KEY, JSON.stringify(this.state)); } catch {} },
+      apply() {
+        const p = PALETTES[this.state.palette] || PALETTES.indigo, d = this.isDark(), root = document.documentElement;
+        const [th, ts] = p.t, [ah, as, al] = p.a, [bh, bs, bl] = p.b, H = (h, s, l) => `${h} ${s}% ${l}%`, v = {};
+        const ds = Math.round(ts * 0.5) + 6;
+        const L = d ? [7, 15, 21, 30, 56, 66, 74, 82, 90, 96] : [97, 94, 89, 80, 48, 40, 31, 23, 15, 9];
+        [50, 100, 200, 300, 400, 500, 600, 700, 800, 900].forEach((k, i) => {
+          const s = d ? (i < 4 ? ds : Math.min(ds, 18)) : (i < 4 ? ts : Math.min(ts, 22));
+          v["s" + k] = H(th, s, L[i]);
+        });
+        v.surface = d ? H(th, ds, 11) : "0 0% 100%";
+        if (d) {
+          const s = Math.min(as + 5, 90);
+          Object.assign(v, { a50: H(ah, 35, 17), a100: H(ah, 35, 23), a500: H(ah, s, 74), a600: H(ah, s, 68), a700: H(ah, s, 60), p600: H(bh, Math.min(bs + 5, 90), 70), on: H(th, 30, 8), r50: "0 45% 18%", r500: "0 84% 68%", r600: "0 84% 70%" });
+        } else {
+          const s = Math.min(as + 20, 100);
+          Object.assign(v, { a50: H(ah, s, 97), a100: H(ah, s, 93), a500: H(ah, as, Math.min(al + 10, 70)), a600: H(ah, as, al), a700: H(ah, as, Math.max(al - 9, 15)), p600: H(bh, bs, bl), on: "0 0% 100%", r50: "0 86% 97%", r500: "0 84% 60%", r600: "0 72% 51%" });
+        }
+        for (const k in v) root.style.setProperty("--" + k, v[k]);
+        root.style.colorScheme = d ? "dark" : "light";
+        root.classList.toggle("dark", d);
+      },
+      set(patch) {
+        const root = document.documentElement;
+        root.classList.add("theme-anim"); Object.assign(this.state, patch); this.apply(); this.save();
+        setTimeout(() => root.classList.remove("theme-anim"), 400);
+      }
+    };
+    Theme.load(); Theme.apply();
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (Theme.state.mode === "auto") Theme.apply(); });
+  </script>
+  <script src="https://unpkg.com/lucide@0.468.0"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script>
+    if (window.gsap) {
+      gsap.registerPlugin(ScrollTrigger);
+      document.documentElement.classList.add('has-gsap');
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-on font-black text-xl shadow-md shadow-indigo-100">S</div>
+        <div>
+          <h1 class="text-xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Style Match</h1>
+          <p class="text-xs text-slate-400 font-medium">Asesoría de Imagen & Moda</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="openSell()" class="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold transition">
+          <i data-lucide="tag" class="w-4 h-4 text-indigo-600"></i><span class="hidden sm:inline">Vender</span>
+        </button>
+        <button onclick="openTheme()" class="p-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition" aria-label="Apariencia"><i data-lucide="palette" class="w-4 h-4"></i></button>
+        <button onclick="openAdmin()" class="p-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition" aria-label="Equipo"><i data-lucide="lock" class="w-4 h-4"></i></button>
+        <button onclick="toggleCartModal()" class="relative p-2.5 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition" aria-label="Carrito">
+          <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+          <span id="cart-badge" class="absolute -top-1 -right-1 bg-purple-600 text-on text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center hidden">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section id="hero" class="relative isolate w-full overflow-hidden bg-slate-50" style="height: calc(100svh - 5rem);">
+  <!-- 1. Contenedor de medios de fondo -->
+  <div id="hero-media" class="absolute inset-0 overflow-hidden pointer-events-none">
+    <img id="hero-img" src="https://images.unsplash.com/photo-1445205170230-053b83016050?w=1800&q=80" alt="Prendas de moda en un perchero" class="w-full h-full object-cover">
+    <div id="hero-shade" class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
+  </div>
+
+  <!-- 2. EL BOTÓN VA AQUÍ: Flotando dentro del hero con z-[9999] -->
+  <div id="hero-cta" class="absolute bottom-8 sm:bottom-12 left-6 sm:left-12 right-6 text-snow max-w-xl z-10">
+    <p id="hero-text" class="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">Prendas elegidas según tu tono de piel y tu silueta.</p>
+    <button type="button" id="scroll-to-test" class="mt-5 inline-flex items-center gap-2 bg-snow text-night font-bold text-sm px-5 py-3 rounded-xl hover:bg-snow/90 transition cursor-pointer">
+      Hacer mi test de estilo <i data-lucide="arrow-down" class="w-4 h-4"></i>
+    </button>
+  </div>
+</section> <!-- Aquí se cierra el hero -->
+
+  <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10 flex-1">
+
+    <section id="test" class="scroll-mt-24 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm mb-10">
+      <div class="max-w-3xl mb-6">
+        <span class="text-indigo-600 font-bold text-xs uppercase tracking-wider bg-indigo-50 px-3 py-1 rounded-full">Paso 1: Tu Perfil de Estilo</span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">Descubre las prendas ideales para tus rasgos</h2>
+        <p class="text-slate-500 text-sm mt-1">Usa la cámara con IA o completa tu test para filtrar los cortes y colores que mejor te quedan.</p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Tono de Piel</label>
+          <select id="user-skin" onchange="applyFilters()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">Todos los tonos</option>
+            <option value="calido">Cálido / Dorado / Moreno</option>
+            <option value="frio">Frío / Claro / Rosado</option>
+            <option value="neutro">Neutro / Oliva</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Color de Ojos</label>
+          <select id="user-eyes" onchange="applyFilters()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">Todos los colores</option>
+            <option value="oscuros">Marrones / Negros</option>
+            <option value="claros">Azules / Verdes / Miel</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Tipo de Cuerpo</label>
+          <select id="user-body" onchange="applyFilters()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">Todas las siluetas</option>
+            <option value="reloj-arena">Reloj de Arena / Curvilíneo</option>
+            <option value="rectangular">Rectangular / Atlético</option>
+            <option value="triangulo">Triángulo / Cadera ancha</option>
+            <option value="triangulo-invertido">Triángulo Invertido / Espalda ancha</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5">
+        <button onclick="openAssistant('camara')" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-on font-bold text-sm px-5 py-3 rounded-xl transition shadow-sm">
+          <i data-lucide="camera" class="w-4 h-4"></i> Tomar foto con IA
+        </button>
+        <button onclick="openAssistant('foto')" class="inline-flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-sm px-5 py-3 rounded-xl transition">
+          <i data-lucide="sparkles" class="w-4 h-4"></i> Subir foto o describirme
+        </button>
+        <p class="text-xs text-slate-500">La IA analiza tus rasgos y recomienda la ropa ideal.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h3 class="text-xl font-bold text-slate-900">Catálogo de Prendas</h3>
+          <p id="match-status" class="text-xs text-indigo-600 font-medium">Mostrando todas las prendas disponibles</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-3 mb-6">
+        <input id="f-q" oninput="applyFilters()" type="search" placeholder="Buscar prenda..." class="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" style="min-width:12rem">
+        <select id="f-cat" onchange="applyFilters()" class="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><option value="">Todas las categorías</option></select>
+        <select id="f-sort" onchange="applyFilters()" class="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm"><option value="">Recomendadas primero</option><option value="asc">Precio: menor a mayor</option><option value="desc">Precio: mayor a menor</option></select>
+      </div>
+      <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+    </section>
+  </main>
+
+  <section id="band" class="relative w-full mt-6" style="height: 80svh;">
+    <div id="band-media" class="absolute inset-0 overflow-hidden">
+      <img id="band-img" src="https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=1800&q=80" alt="Banner" class="w-full h-full object-cover">
+      <div class="absolute inset-0 bg-black/55"></div>
+      <div class="absolute inset-0 flex flex-col items-center justify-center text-center text-snow px-6">
+        <h3 class="text-3xl sm:text-5xl font-extrabold tracking-tight max-w-2xl">¿Tienes ropa que ya no usas? Dale una segunda vida.</h3>
+        <p class="mt-3 text-snow/80 max-w-md text-sm sm:text-base">Súbela y nuestro equipo la revisa y la publica en el catálogo.</p>
+        <button onclick="openSell()" class="mt-6 bg-snow text-night font-bold px-6 py-3 rounded-xl hover:bg-snow/90 transition">Vender mi prenda</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="cart-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[80vh]">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-slate-900">Tu Carrito Style Match</h3>
+        <button onclick="toggleCartModal()" class="p-1 rounded-lg text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div id="cart-items" class="space-y-3 overflow-y-auto flex-1 pr-1"></div>
+      <div class="border-t border-slate-100 pt-4 mt-4 space-y-3">
+        <input id="co-name" placeholder="Tu nombre" autocomplete="name" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        <select id="co-ship" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"><option>Recojo en tienda</option><option>Envío a domicilio</option></select>
+        <input id="co-note" placeholder="Nota o dirección (opcional)" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        <div class="flex justify-between font-bold text-slate-900 text-base"><span>Total:</span><span id="cart-total">$0.00</span></div>
+        <button onclick="sendToWhatsApp()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-snow font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+          <i data-lucide="message-circle" class="w-5 h-5"></i> Pedir por WhatsApp
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="theme-panel" class="fixed right-4 z-[70] hidden w-64 rounded-2xl bg-white border border-slate-200 shadow-2xl p-4" style="top:calc(5rem + env(safe-area-inset-top,0px))">
+    <p class="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Paleta</p>
+    <div id="tp-pal" class="flex flex-wrap gap-2 mb-4"></div>
+    <p class="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Modo</p>
+    <div class="grid grid-cols-3 gap-2">
+      <button data-mode="auto" class="tp-mode rounded-lg border border-slate-200 py-1.5 text-xs font-semibold text-slate-700">Auto</button>
+      <button data-mode="light" class="tp-mode rounded-lg border border-slate-200 py-1.5 text-xs font-semibold text-slate-700">Claro</button>
+      <button data-mode="dark" class="tp-mode rounded-lg border border-slate-200 py-1.5 text-xs font-semibold text-slate-700">Oscuro</button>
+    </div>
+  </div>
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] hidden bg-slate-900 text-on text-sm font-medium px-4 py-2 rounded-xl shadow-lg"></div>
+
+
+  <script src="js/assistant.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

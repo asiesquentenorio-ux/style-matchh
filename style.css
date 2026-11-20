@@ -1,0 +1,3 @@
+/* css/style.css */
+html { scroll-behavior: smooth; }
+.theme-anim, .theme-anim * { transition: background-color .3s, color .3s, border-color .3s; }
